@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\UserController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -15,8 +16,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [UserController::class, 'me']);
     Route::put('/me', [UserController::class, 'updateProfile']);
     Route::get('/{user}', [UserController::class, 'show']);
-    Route::get('/{user}/clubs', [UserController::class, 'userClubs']);
-    Route::get('/{user}/events', [UserController::class, 'userEvents']);
 });
 
 

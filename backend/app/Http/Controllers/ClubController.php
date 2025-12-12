@@ -126,6 +126,7 @@ class ClubController extends Controller
             'status' => 'approved',
             'form_data' => json_encode([]),
         ]);
+        User::find($request->input('user_id'))->role='club_member';
         return response()->json(['data' => $submit], 201);
     }
     public function removeMember($clubId, $userId)

@@ -179,6 +179,25 @@ class ClubsContoller extends Controller
         }
         return response()->json(['message' => 'unfollowed'], 200);
     }
-
+    public function submissions($clubId)
+    {
+        $submissions = SubmitClub::where('club_id', $clubId)->get();
+        return response()->json(['data' => $submissions], 200);
+    }
+    public function reviewSubmission(Request $request, $clubId, $submissionId)
+    {
+        $validatedData = $request->validate([
+            'status' => 'required|in:approved,rejected',
+        ]);
+        $submission = SubmitClub::where('club_id', $clubId)
+            ->where('id', $submissionId)
+            ->first();
+        if (!$submission) {
+            return response()->json(['message' => 'Submission not found'], 404);
+        }
+        $submission->status = $validatedData['status'];
+        $submission->save();
+        return response()->json(['data' => $submission], 200);
+    }
 
 }

@@ -7,6 +7,11 @@ use App\Models\Event;
 use App\Models\Attendance;
 class EventsControllers extends Controller
 {
+    protected $neo4j;
+    public function __construct()
+    {
+         $this->neo4j = app('neo4j');
+    }
     public function index()
     {
         return response()->json(['data' => Event::paginate(10)], 200);
@@ -61,7 +66,7 @@ class EventsControllers extends Controller
     {
         $event = Event::find($id);
         if (!$event) {
-            return response()->json(['message' => 'Event not found'], 404); 
+            return response()->json(['message' => 'Event not found'], 404);
         }
         $event->delete();
         return response()->json(['message' => 'Event deleted successfully'], 200);
@@ -110,6 +115,28 @@ class EventsControllers extends Controller
        }
        $attendance->delete();
          return response()->json(['message' => 'Attendance removed'], 200);
+    }
+    public function submitForApproval(Request $request, $id)
+    {
+       $validate_data = $request->validate(
+              [
+                'user_id' => 'required|integer|exists:users,id',
+                'form_data' => 'required|json'
+              ]
+              );
+         $event = Event::find($id);
+            if (!$event) {
+                return response()->json(['message' => 'Event not found'], 404);
+            }
+        $submit = Submit::create([
+                'event_id' => $id,
+                'user_id' => $request->user_id,
+                'submitted_at' => now(),
+                'status' => 'pending',
+                'form_data' => $request->form_data,
+            ]);
+            return response()->json(['data' => $submit], 201);
+
     }
 
 }

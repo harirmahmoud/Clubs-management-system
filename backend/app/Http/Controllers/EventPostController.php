@@ -6,8 +6,8 @@ use App\Models\EventPost;
 use Illuminate\Http\Request;
 use App\Facades\Neo4j;
 use App\Models\Event;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
 
 class EventPostController extends Controller
 {
@@ -18,77 +18,131 @@ class EventPostController extends Controller
         $this->neo4j = app('neo4j');
     }
 
-    public function feed(Request $request)
-    {
-        $userId = Auth::user()?->id;
+public function feed(Request $request)
+{
+    $userId = Auth::user()?->id;
 
-        // If user not authenticated, return trending events
-        if (!$userId) {
-            return response()->json(['message' => []], 200);
-        }
-
-        // Get clubs that the user follows
-        $followedClubsResult = $this->neo4j->run(
-            'MATCH (u:User {id: $userId})-[:FOLLOWS]->(c:Club)
-             RETURN c.id as clubId',
-            ['userId' => $userId]
+    /** ============================================================
+     * 1. IF USER IS NOT AUTHENTICATED → RETURN TRENDING POSTS ONLY
+     * ============================================================ */
+    if (!$userId) {
+        // Top 20 trending posts ordered by Neo4j likes count
+        $trendingQuery = $this->neo4j->run(
+            'MATCH (p:EventPost)
+             OPTIONAL MATCH (u:User)-[:LIKES]->(p)
+             WITH p, COUNT(u) AS likesCount
+             RETURN p {.*, likes_count: likesCount} AS post
+             ORDER BY likesCount DESC
+             LIMIT 20'
         );
 
-        $followedClubIds = [];
-        foreach ($followedClubsResult->records() as $record) {
-            $followedClubIds[] = $record->get('clubId');
+        $trendingPosts = [];
+
+        foreach ($trendingQuery as $record) {
+            $trendingPosts[] = $record->get('post');
         }
 
-        // If user doesn't follow any clubs, return trending
-
-
-        // Get events from followed clubs with engagement metrics
-        $events = Event::whereIn('club_id', $followedClubIds)
-            ->with(['posts' => function ($query) {
-                $query->orderBy('created_at', 'desc');
-            }, 'club'])
-            ->withCount('posts')
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
-
-        // Enrich with engagement data from Neo4j
-        foreach ($events as $event) {
-            foreach ($event->posts as $post) {
-                // Get likes count
-                $likesResult = $this->neo4j->run(
-                    'MATCH (u:User)-[:LIKES]->(p:EventPost {id: $postId})
-                     RETURN COUNT(u) as count',
-                    ['postId' => $post->id]
-                );
-                $post->likes_count = $likesResult->records()[0]?->get('count') ?? 0;
-
-                // Get saves count
-                $savesResult = $this->neo4j->run(
-                    'MATCH (u:User)-[:SAVED]->(p:EventPost {id: $postId})
-                     RETURN COUNT(u) as count',
-                    ['postId' => $post->id]
-                );
-                $post->saves_count = $savesResult->records()[0]?->get('count') ?? 0;
-
-                // Check if current user liked or saved
-                $userLiked = $this->neo4j->run(
-                    'MATCH (u:User {id: $userId})-[:LIKES]->(p:EventPost {id: $postId})
-                     RETURN COUNT(*) as count',
-                    ['userId' => $userId, 'postId' => $post->id]
-                );
-                $post->user_liked = $userLiked->records()[0]?->get('count') > 0;
-
-                $userSaved = $this->neo4j->run(
-                    'MATCH (u:User {id: $userId})-[:SAVED]->(p:EventPost {id: $postId})
-                     RETURN COUNT(*) as count',
-                    ['userId' => $userId, 'postId' => $post->id]
-                );
-                $post->user_saved = $userSaved->records()[0]?->get('count') > 0;
-            }
-        }
-
-        return response()->json(['data' => $events], 200);
+        return response()->json([
+            "status" => "success",
+            "type" => "trending",
+            "data" => $trendingPosts
+        ], 200);
     }
+
+    /** ============================================================
+     * 2. LOGGED IN USERS → NORMAL FEED
+     * ============================================================ */
+
+    // Find clubs the user follows
+    $followedClubsResult = $this->neo4j->run(
+        'MATCH (u:User {id: $userId})-[:FOLLOWS]->(c:Club)
+         RETURN c.id AS clubId',
+        ['userId' => $userId]
+    );
+
+    $followedClubIds = [];
+    foreach ($followedClubsResult as $record) {
+        $followedClubIds[] = $record->get('clubId');
+    }
+
+    /** If user follows *no clubs* → fallback to trending posts */
+    if (count($followedClubIds) === 0) {
+        $fallbackTrending = $this->neo4j->run(
+            'MATCH (p:EventPost)
+             OPTIONAL MATCH (u:User)-[:LIKES]->(p)
+             WITH p, COUNT(u) AS likesCount
+             RETURN p {.*, likes_count: likesCount} AS post
+             ORDER BY likesCount DESC
+             LIMIT 20'
+        );
+
+        $posts = [];
+        foreach ($fallbackTrending as $record) {
+            $posts[] = $record->get('post');
+        }
+
+        return response()->json([
+            "status" => "success",
+            "type" => "trending_fallback",
+            "data" => $posts
+        ], 200);
+    }
+
+    /** ============================================================
+     * 3. FETCH EVENTS FROM FOLLOWED CLUBS
+     * ============================================================ */
+    $events = Event::whereIn('club_id', $followedClubIds)
+        ->with(['posts' => function ($query) {
+            $query->orderBy('created_at', 'desc');
+        }, 'club'])
+        ->withCount('posts')
+        ->orderBy('created_at', 'desc')
+        ->paginate(10);
+
+    /** Add likes, saves, userLiked, userSaved (Neo4j) */
+    foreach ($events as $event) {
+        foreach ($event->posts as $post) {
+
+            // Likes count
+            $likes = $this->neo4j->run(
+                'MATCH (u:User)-[:LIKES]->(p:EventPost {id: $postId})
+                 RETURN COUNT(u) AS count',
+                ['postId' => $post->id]
+            );
+            $post->likes_count = $likes->records()[0]?->get('count') ?? 0;
+
+            // Saves count
+            $saves = $this->neo4j->run(
+                'MATCH (u:User)-[:SAVED]->(p:EventPost {id: $postId})
+                 RETURN COUNT(u) AS count',
+                ['postId' => $post->id]
+            );
+            $post->saves_count = $saves->records()[0]?->get('count') ?? 0;
+
+            // Whether current user liked
+            $userLiked = $this->neo4j->run(
+                'MATCH (u:User {id: $userId})-[:LIKES]->(p:EventPost {id: $postId})
+                 RETURN COUNT(*) AS count',
+                ['userId' => $userId, 'postId' => $post->id]
+            );
+            $post->user_liked = $userLiked->records()[0]?->get('count') > 0;
+
+            // Whether current user saved
+            $userSaved = $this->neo4j->run(
+                'MATCH (u:User {id: $userId})-[:SAVED]->(p:EventPost {id: $postId})
+                 RETURN COUNT(*) AS count',
+                ['userId' => $userId, 'postId' => $post->id]
+            );
+            $post->user_saved = $userSaved->records()[0]?->get('count') > 0;
+        }
+    }
+
+    return response()->json([
+        "status" => "success",
+        "type" => "feed",
+        "data" => $events
+    ], 200);
+}
 
 
 public function trending(Request $request)
@@ -184,8 +238,6 @@ public function trending(Request $request)
 
     return response()->json(['data' => $paged], 200);
 }
-
-
      public function index($eventId)
     {
         $event = Event::find($eventId);
@@ -203,6 +255,7 @@ public function trending(Request $request)
         return response()->json(['message' => 'Event not found'], 404);
     }
 
+    // Validate request
     $validated = $request->validate([
         'content' => 'nullable|string',
         'post_title' => 'nullable|string|max:255',
@@ -217,13 +270,13 @@ public function trending(Request $request)
     $validated['event_id'] = $eventId;
     $validated['created_by'] = auth()->id();
 
-    // Save in MySQL
+    // Save inside MySQL
     $post = EventPost::create($validated);
 
-    // Get event type name
-    $eventTypeName = $event->eventType?->name;
+    // Event type name
+    $eventTypeName = $event->eventType?->name ?? 'Unknown';
 
-    // Neo4j Node Properties
+    // Prepare Neo4j properties
     $neo4jData = [
         'content' => $post->content,
         'post_title' => $post->post_title,
@@ -234,32 +287,38 @@ public function trending(Request $request)
         'post_image4' => $post->post_image4,
         'post_video' => $post->post_video,
         'created_by' => $post->created_by,
-        'event_id' => $eventId,
+        'event_id' => (int) $eventId,
         'event_type_name' => $eventTypeName,
     ];
 
-    // Create / link in Neo4j
+    // Neo4j: MERGE everything safely
     $this->neo4j->run(
-        'MERGE (t:EventType {name: $typeName})
-         WITH t
-         MATCH (u:User {id: $userId}), (e:Event {id: $eventId})
-         MERGE (p:EventPost {id: $postId})
-         SET p += $postData
-         MERGE (p)-[:BELONGS_TO_TYPE]->(t)
-         MERGE (u)-[:CREATED]->(p)
-         MERGE (e)-[:HAS_POST]->(p)
-         RETURN p, t',
+        '
+        MERGE (u:User {id: $userId})
+        MERGE (e:Event {id: $eventId})
+        MERGE (t:EventType {name: $eventTypeName})
+
+        MERGE (p:EventPost {id: $postId})
+        SET p += $postData
+
+        MERGE (p)-[:BELONGS_TO_TYPE]->(t)
+        MERGE (u)-[:CREATED]->(p)
+        MERGE (e)-[:HAS_POST]->(p)
+
+        RETURN p, t, u, e
+        ',
         [
-            'typeName' => $eventTypeName,
             'userId' => auth()->id(),
-            'eventId' => $eventId,
-            'postId' => $post->id,
-            'postData' => $neo4jData
+            'eventId' => (int) $eventId,
+            'eventTypeName' => $eventTypeName,
+            'postId' => (int) $post->id,
+            'postData' => $neo4jData,
         ]
     );
 
     return response()->json(['data' => $post], 201);
 }
+
 
 
 

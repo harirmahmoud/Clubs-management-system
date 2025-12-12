@@ -33,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 
+
 Route::prefix('clubs')->group(function () {
     Route::get('/', [ClubController::class, 'index']);
     Route::post('/', [ClubController::class, 'store'])->middleware(['auth:sanctum', 'can:create clubs']);
@@ -43,8 +44,8 @@ Route::prefix('clubs')->group(function () {
         Route::delete('/', [ClubController::class, 'destroy'])->middleware(['auth:sanctum', 'can:delete clubs']);
 
         // Club Members
-        Route::get('/members', [ClubController::class, 'members'])->middleware('can:see club members');
-        Route::post('/members', [ClubController::class, 'addMember'])->middleware(['auth:sanctum', 'can:accept memebers']);
+        Route::get('/members', [ClubController::class, 'members'])->middleware(["auth:sanctum",'can:see members']);
+        Route::post('/members', [ClubController::class, 'addMember'])->middleware(['auth:sanctum', 'can:accept members']);
         Route::put('/members/{user}', [ClubController::class, 'updateMemberRole'])->middleware(['auth:sanctum', 'can:assign roles']);
         Route::delete('/members/{user}', [ClubController::class, 'removeMember'])->middleware(['auth:sanctum', 'can:remove members']);
         Route::post('/follow', [ClubController::class, 'follow'])->middleware('auth:sanctum');

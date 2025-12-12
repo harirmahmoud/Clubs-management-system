@@ -103,7 +103,7 @@ class RolesAndPermissionsSeeder extends Seeder
             "view attendance",
 
         ]);
-        $club_memeber ->givePermissionTo([
+        $club_member->givePermissionTo([
             'create posts',
             'create tasks',
             'view posts',

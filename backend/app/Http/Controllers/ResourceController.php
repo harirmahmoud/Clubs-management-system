@@ -43,7 +43,7 @@ class ResourceController extends Controller
         if (!$ressource) {
             return response()->json(['message' => 'Ressource not found'], 404);
         }
-        $ressource->update($request->all());
+        $ressource->update($validatedData);
         return response()->json(['data' => $ressource], 200);
     }
     public function destroy($id)

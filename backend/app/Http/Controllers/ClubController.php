@@ -40,6 +40,11 @@ class ClubController extends Controller
             'created_by' => 'required|integer|exists:users,id'
         ]);
         $club = Club::create($request->all());
+        $createdByUser = User::find($request->input('created_by'));
+        if ($createdByUser) {
+            $createdByUser->role = 'club_admin';
+            $createdByUser->save();
+        }
         return response()->json(['data' => $club], 201);
     }
     public function update(Request $request, $id)
@@ -126,6 +131,7 @@ class ClubController extends Controller
             'status' => 'approved',
             'form_data' => json_encode([]),
         ]);
+        User::find($request->input('user_id'))->role='club_member';
         return response()->json(['data' => $submit], 201);
     }
     public function removeMember($clubId, $userId)

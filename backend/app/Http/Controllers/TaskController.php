@@ -5,8 +5,16 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Task;
 use App\Models\Project;
+use Illuminate\Support\Facades\Auth;
+use App\Facades\Neo4j;
 class TaskController extends Controller
 {
+    protected $neo4j;
+    public function __construct()
+    {
+        // Inject Neo4j Aura client (configured via a ServiceProvider)
+        $this->neo4j = app('neo4j');
+    }
     public function index($projectId)
     {
         $project = Project::find($projectId);
@@ -35,6 +43,19 @@ class TaskController extends Controller
         ]);
 
         $task = Task::create($request->all());
+
+        // Save in Neo4j
+        $this->neo4j->run(
+            'MATCH (p:Project {id: $projectId}), (u:User {id: $userId})
+             CREATE (t:Task $data)<-[:CREATED]-(u)-[:HAS_TASK]->(p)
+             RETURN t',
+            [
+                'projectId' => $projectId,
+                'userId' => Auth::id(),
+                'data' => $validatedData
+            ]
+        );
+
         return response()->json(['data' => $task], 201);
     }
 
@@ -63,7 +84,16 @@ class TaskController extends Controller
         if (!$task) {
             return response()->json(['message' => 'Task not found'], 404);
         }
-        $task->update($request->all());
+        $task->update($validatedData);
+
+        // Update Neo4j
+        $this->neo4j->run(
+            'MATCH (t:Task {id: $id})
+             SET t += $data
+             RETURN t',
+            ['id' => $task->id, 'data' => $validatedData]
+        );
+
         return response()->json(['data' => $task], 200);
     }
 
@@ -74,6 +104,13 @@ class TaskController extends Controller
             return response()->json(['message' => 'Task not found'], 404);
         }
         $task->delete();
+
+        // Delete from Neo4j
+        $this->neo4j->run(
+            'MATCH (t:Task {id: $id}) DETACH DELETE t',
+            ['id' => $id]
+        );
+
         return response()->json(['message' => 'Task deleted successfully'], 200);
     }
     public function updateStatus(Request $request, $id)
@@ -87,6 +124,14 @@ class TaskController extends Controller
         }
         $task->status = $request->input('status');
         $task->save();
+
+        $this->neo4j->run(
+            'MATCH (t:Task {id: $id})
+             SET t.status = $status
+             RETURN t',
+            ['id' => $id, 'status' => $validatedData['status']]
+        );
+
         return response()->json(['data' => $task], 200);
     }
     public function assign(Request $request, $id)
@@ -100,6 +145,15 @@ class TaskController extends Controller
         }
         $task->assigned_to = $request->input('assigned_to');
         $task->save();
+
+        $this->neo4j->run(
+            'MATCH (t:Task {id: $id}), (u:User {id: $userId})
+             MERGE (u)-[:ASSIGNED]->(t)
+             RETURN t, u',
+            ['id' => $id, 'userId' => $validatedData['assigned_to']]
+        );
+
+
         return response()->json(['data' => $task], 200);
     }
 }

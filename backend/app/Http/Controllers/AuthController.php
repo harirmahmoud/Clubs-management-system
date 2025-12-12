@@ -29,9 +29,11 @@ class AuthController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+        $user->role = 'user';
+        $user->save();
 
          try {
-            
+
             $this->neo4j->run(
                 'MERGE (u:User {id: $id})
                  SET u.name = $name, u.email = $email, u.created_at = $created_at',
@@ -47,6 +49,7 @@ class AuthController extends Controller
            return response()->json([
                 'message' => 'User created in primary database, but failed to create in Neo4j: '.$e->getMessage(),
                 'user' => $user,
+                'role' => $user->role,
             ], 201);
         }
 
@@ -77,6 +80,8 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Login successful!',
             'token' => $token,
+            'user' => $user,
+            'role' => $user->role,
         ]);
     }
 

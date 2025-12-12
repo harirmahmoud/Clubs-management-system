@@ -3,7 +3,7 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ClubsController;
+use App\Http\Controllers\ClubController;
 use App\Http\Controllers\EventPostController;
 use App\Http\Controllers\EventsControllers;
 use App\Http\Controllers\TaskController;

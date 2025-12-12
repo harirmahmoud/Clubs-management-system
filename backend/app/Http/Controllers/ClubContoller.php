@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Club;
-class ClubsContoller extends Controller
+class ClubContoller extends Controller
 {
     protected $neo4j;
     public function __construct()
@@ -149,7 +149,7 @@ class ClubsContoller extends Controller
 
     public function follow(Request $request, $clubId)
     {
-        
+
         $req  = $this->neo4j->run(
             'MATCH (u:User {id: $userId}), (c:Club {id: $clubId})
              MERGE (u)-[:FOLLOWS]->(c)',

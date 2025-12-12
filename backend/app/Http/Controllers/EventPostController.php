@@ -6,6 +6,7 @@ use App\Models\EventPost;
 use Illuminate\Http\Request;
 use App\Facades\Neo4j;
 use App\Models\Event;
+use Illuminate\Support\Facades\Auth;
 
 
 class EventPostController extends Controller
@@ -37,28 +38,72 @@ class EventPostController extends Controller
         $posts = EventPost::where('event_id', $eventId)->paginate(10);
         return response()->json(['data' => $posts,"event"=>$event], 200);
     }
-    public function store(Request $request,$eventId)
-    {
-        $event = Event::find($eventId);
-        if (!$event) {
-            return response()->json(['message' => 'Event not found'], 404);
-        }
-        $validatedData = $request->validate([
-            'content' => 'nullable|string',
-            'post_image' => 'nullable|string|max:255',
-            'post_title' => 'nullable|string|max:255',
-            'post_description' => 'nullable|string|max:255',
-            'post_image2' => 'nullable|string|max:255',
-            'post_image3' => 'nullable|string|max:255',
-            'post_image4' => 'nullable|string|max:255',
-            'post_video' => 'nullable|string|max:255',
-            'created_by' => 'required|integer|exists:users,id'
-        ]);
-        $data_to_create = $request->all();
-        $data_to_create['event_id'] = $eventId;
-        $post = EventPost::create($data_to_create);
-        return response()->json(['data' => $post], 201);
+    public function store(Request $request, $eventId)
+{
+    $event = Event::with('eventType')->find($eventId);
+
+    if (!$event) {
+        return response()->json(['message' => 'Event not found'], 404);
     }
+
+    $validated = $request->validate([
+        'content' => 'nullable|string',
+        'post_title' => 'nullable|string|max:255',
+        'post_description' => 'nullable|string|max:255',
+        'post_image' => 'nullable|string|max:255',
+        'post_image2' => 'nullable|string|max:255',
+        'post_image3' => 'nullable|string|max:255',
+        'post_image4' => 'nullable|string|max:255',
+        'post_video' => 'nullable|string|max:255',
+    ]);
+
+    $validated['event_id'] = $eventId;
+    $validated['created_by'] = auth()->id();
+
+    // Save in MySQL
+    $post = EventPost::create($validated);
+
+    // Get event type name
+    $eventTypeName = $event->eventType?->name;
+
+    // Neo4j Node Properties
+    $neo4jData = [
+        'content' => $post->content,
+        'post_title' => $post->post_title,
+        'post_description' => $post->post_description,
+        'post_image' => $post->post_image,
+        'post_image2' => $post->post_image2,
+        'post_image3' => $post->post_image3,
+        'post_image4' => $post->post_image4,
+        'post_video' => $post->post_video,
+        'created_by' => $post->created_by,
+        'event_id' => $eventId,
+        'event_type_name' => $eventTypeName,
+    ];
+
+    // Create / link in Neo4j
+    $this->neo4j->run(
+        'MERGE (t:EventType {name: $typeName})
+         WITH t
+         MATCH (u:User {id: $userId}), (e:Event {id: $eventId})
+         MERGE (p:EventPost {id: $postId})
+         SET p += $postData
+         MERGE (p)-[:BELONGS_TO_TYPE]->(t)
+         MERGE (u)-[:CREATED]->(p)
+         MERGE (e)-[:HAS_POST]->(p)
+         RETURN p, t',
+        [
+            'typeName' => $eventTypeName,
+            'userId' => auth()->id(),
+            'eventId' => $eventId,
+            'postId' => $post->id,
+            'postData' => $neo4jData
+        ]
+    );
+
+    return response()->json(['data' => $post], 201);
+}
+
 
 
     public function show($id)
@@ -71,46 +116,67 @@ class EventPostController extends Controller
     }
 
     public function update(Request $request, $id)
-    {
-        $eventPost = EventPost::find($id);
+{
+    $eventPost = EventPost::find($id);
 
-        $request->validate([
-            'content' => 'sometimes|string',
-            'post_title'=> 'sometimes|string|max:255',
-            'post_description'=> 'sometimes|string|max:255',
-            'post_image'=> 'sometimes|url',
-            'post_image2'=> 'sometimes|url',
-            'post_image3'=> 'sometimes|url',
-            'post_image4'=> 'sometimes|url',
-            'video_url'=> 'sometimes|url',
-        ]);
-
-        $eventPost->update($request->only([
-            'content',
-            'post_image',
-            'post_title',
-            'post_description',
-            'post_image2',
-            'post_image3',
-            'post_image4',
-            'post_video'
-        ]));
-
-        return response()->json([
-            'message' => 'Event post updated successfully!',
-            'event_post' => $eventPost,
-        ]);
-
+    if (!$eventPost) {
+        return response()->json(['message' => 'Event post not found'], 404);
     }
+
+    $validatedData = $request->validate([
+        'content' => 'sometimes|string',
+        'post_title'=> 'sometimes|string|max:255',
+        'post_description'=> 'sometimes|string|max:255',
+        'post_image'=> 'sometimes|string|max:255',
+        'post_image2'=> 'sometimes|string|max:255',
+        'post_image3'=> 'sometimes|string|max:255',
+        'post_image4'=> 'sometimes|string|max:255',
+        'post_video'=> 'sometimes|string|max:255',
+    ]);
+
+    // Update MySQL
+    $eventPost->update($validatedData);
+
+    // Update in Neo4j
+    $this->neo4j->run(
+        'MATCH (p:EventPost {id: $id})
+         SET p += $fields
+         RETURN p',
+        [
+            'id' => $id,
+            'fields' => $validatedData
+        ]
+    );
+
+    return response()->json([
+        'message' => 'Event post updated successfully!',
+        'event_post' => $eventPost,
+    ]);
+}
+
 
 
     public function destroy($id)
-    {
-        $eventPost = EventPost::find($id);
+{
+    $eventPost = EventPost::find($id);
 
-        $eventPost->delete();
-        return response()->json(['message' => 'Event post deleted successfully']);
+    if (!$eventPost) {
+        return response()->json(['message' => 'Event post not found'], 404);
     }
+
+    // Delete MySQL
+    $eventPost->delete();
+
+    // Delete Neo4j node
+    $this->neo4j->run(
+        'MATCH (p:EventPost {id: $id})
+         DETACH DELETE p',
+        ['id' => $id]
+    );
+
+    return response()->json(['message' => 'Event post deleted successfully']);
+}
+
 
 
     public function like($id)

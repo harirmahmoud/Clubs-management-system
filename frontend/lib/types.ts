@@ -20,3 +20,16 @@ export interface Club {
   members: number
   category: string
 }
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  roles: string[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+}

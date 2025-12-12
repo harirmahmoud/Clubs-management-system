@@ -1,27 +1,55 @@
-// context/MyContext.tsx
-import { createContext, useState, ReactNode } from 'react';
+"use client";
+import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { User } from "@/lib/types";
+import Cookies from 'universal-cookie';
 
-// 1. Define the shape of the context
-interface MyContextType {
-  role: { name: string } | null;
-  setRole: React.Dispatch<React.SetStateAction<{ name: string } | null>>;
+const cookies = new Cookies();
+
+interface AuthContextType {
+  token: string | null;
+  user: User | null;
+  login: (user: { token: string; roles: string[] }) => void;
+  logout: () => void;
 }
 
-// 2. Provide a default value (can be undefined initially)
-export const MyContext = createContext<MyContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 3. Type the provider props
-interface MyProviderProps {
-  children: ReactNode;
-}
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
-export const MyProvider = ({ children }: MyProviderProps) => {
-  // Corrected state variable names
-  const [role, setRole] = useState<{ name: string } | null>(null);
+  useEffect(() => {
+    const storedToken = cookies.get("authToken");
+    if (storedToken) {
+      setToken(storedToken);
+      // You might want to fetch user data here if the token is valid
+    }
+  }, []);
+
+  const login = (userData: { token: string; roles: string[] }) => {
+    setToken(userData.token);
+    cookies.set("authToken", userData.token, { path: "/" });
+    cookies.set("userRoles", userData.roles, { path: "/" });
+  };
+
+  const logout = () => {
+    setToken(null);
+    setUser(null);
+    cookies.remove("authToken", { path: "/" });
+    cookies.remove("userRoles", { path: "/" });
+  };
 
   return (
-    <MyContext.Provider value={{ role, setRole }}>
+    <AuthContext.Provider value={{ token, user, login, logout }}>
       {children}
-    </MyContext.Provider>
+    </AuthContext.Provider>
   );
-};
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}

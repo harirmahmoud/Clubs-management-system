@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use App\Models\User;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
@@ -109,5 +110,6 @@ class RolesAndPermissionsSeeder extends Seeder
         $user->givePermissionTo([
             'view posts',
         ]);
+        User::find(1)->assignRole('admin');
     }
 }

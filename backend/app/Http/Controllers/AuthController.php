@@ -81,7 +81,7 @@ class AuthController extends Controller
             'message' => 'Login successful!',
             'token' => $token,
             'user' => $user,
-            'role' => $user->role,
+            'role' => $user->role()->get(),
         ]);
     }
 

@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\EventPostController;
+use App\Http\Controllers\ProjectController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -86,7 +87,7 @@ Route::prefix('event-posts')->group(function () {
         Route::delete('/save', [EventPostController::class, 'unsave'])->middleware('auth:sanctum');
       
     });
-    Route::get( '/likes', [EventPostController::class, 'likes'])->middleware('auth:sanctum');
+    Route::get( '/likes', [EventPostController::class, 'likes'])
 });
 
 

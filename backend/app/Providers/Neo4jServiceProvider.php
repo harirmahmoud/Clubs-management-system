@@ -15,7 +15,7 @@ class Neo4jServiceProvider extends ServiceProvider
                 ->withDriver(
                     'aura',                                // driver name
                     env('NEO4J_URI'),                      // Aura URI
-                    Authenticate::basic(                    // use Authenticate object
+                    authentication: Authenticate::basic(                    // use Authenticate object
                         env('NEO4J_USERNAME'),
                         env('NEO4J_PASSWORD')
                     )

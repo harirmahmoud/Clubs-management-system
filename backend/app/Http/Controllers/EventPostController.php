@@ -128,16 +128,23 @@ class EventPostController extends Controller
         return response()->json(['message' => 'Post unsaved']);
     }
 
-    public function likes($id)
-    {
-        $result = $this->neo4j->run(
-            'MATCH (u:User)-[:LIKES]->(p:EventPost {id: $postId})
-             RETURN u',
-            ['postId' => $id]
-        );
+    public function likes()
+{
+    $userId = auth()->id();
 
-        $users = $result->records();
+    $result = $this->neo4j->run(
+        'MATCH (u:User {id: $userId})-[:LIKES]->(p:EventPost)
+         RETURN p',
+        ['userId' => $userId]
+    );
 
-        return response()->json($users);
+    // Collect posts
+    $posts = [];
+    foreach ($result->records() as $record) {
+        $posts[] = $record->get('p')->values(); // convert node to array
     }
+
+    return response()->json($posts);
+}
+
 }

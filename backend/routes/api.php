@@ -99,8 +99,8 @@ Route::prefix('event-posts')->group(function () {
         Route::delete('/save', [EventPostController::class, 'unsave'])->middleware('auth:sanctum');
 
     });
-    Route::get( '/likes', [EventPostController::class, 'likes'])
-});
+    Route::get('/likes', [EventPostController::class, 'likes']);
+})
 
 
 
